@@ -1,0 +1,53 @@
+capstone: "Usage Metering & Billing Engine"
+number: 3
+of: 5
+status: complete
+
+run: "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+seed: "python scripts/seed.py"
+test: "pytest tests/ -v"
+base_url: "http://localhost:8000"
+
+endpoints:
+  - method: POST
+    path: /v1/tenants
+    description: Create a tenant (starts on the Free plan).
+  - method: GET
+    path: /v1/tenants/{tenant_id}
+    description: Inspect a tenant's plan and subscription status.
+  - method: POST
+    path: /v1/generate
+    description: The one dummy billable action. Requires an Idempotency-Key header.
+  - method: GET
+    path: /v1/usage?tenant_id=...
+    description: Monthly rollup — used/limit for both quota dimensions, plus cost.
+  - method: POST
+    path: /v1/checkout
+    description: Creates a real Stripe test-mode Checkout Session for a tenant to subscribe to Pro.
+  - method: POST
+    path: /webhooks/stripe
+    description: Signature-verified, deduplicated Stripe webhook receiver.
+  - method: POST
+    path: /jobs/scan-usage-alerts
+    description: Background job — flags tenants at 80%/100% of either quota.
+  - method: GET
+    path: /jobs/{job_id}
+    description: Background job status/progress.
+  - method: GET
+    path: /health
+    description: Liveness check.
+
+demo_tenants:
+  - id: tn_demo_free
+    plan: free
+  - id: tn_demo_pro
+    plan: pro
+
+notes: >
+  Seed is idempotent (INSERT OR IGNORE on fixed tenant ids) — safe to run
+  scripts/seed.py more than once. pytest runs fully offline (27 tests, 0
+  network calls) against a disposable SQLite file. The Stripe checkout/
+  webhook endpoints need real STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET /
+  STRIPE_PRICE_ID_PRO test-mode values in .env plus `stripe listen` running
+  locally — see README "Stripe setup" and EVIDENCE.md for the real
+  end-to-end transcript.
