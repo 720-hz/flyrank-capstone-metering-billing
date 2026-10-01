@@ -108,10 +108,38 @@ The forgery is rejected before touching the database at all (`400`, signature ch
 
 ## Stripe Checkout end-to-end (Probe 3) — real test-mode run
 
-This is the one probe that genuinely needs a real Stripe test-mode account, a real browser completing Stripe's own hosted Checkout page with the test card `4242 4242 4242 4242`, and `stripe listen` forwarding a real webhook — none of which this build environment's network can reach (outbound access here is limited to package registries; `api.stripe.com` returns a proxy `403` — confirmed directly, see `BUILDLOG.md`). Captured on a machine with normal internet access:
+This is the one probe that genuinely needs a real Stripe test-mode account, a real browser completing Stripe's own hosted Checkout page with the test card `4242 4242 4242 4242`, and `stripe listen` forwarding a real webhook — none of which this build environment's network can reach (outbound access here is limited to package registries; `api.stripe.com` returns a proxy `403` — confirmed directly, see `BUILDLOG.md`). Captured on a machine with normal internet access, real Stripe test-mode sandbox account:
 
-<!-- REAL-STRIPE-CHECKOUT-EVIDENCE: filled in after the live run -->
-*(pending — see BUILDLOG.md for the plan; filled in with the real `stripe listen` transcript, the real Checkout session id, and the `GET /v1/usage` response showing the new Pro limits, once run)*
+**1. Checkout session created** (`POST /v1/checkout`, `tenant_id: tn_demo_free`, which starts on Free):
+```
+Stripe API Version [2026-08-26.dahlia]
+session_id = cs_test_a1MDnHpMY10kuWD24F1e9pNnssxz11KJRXFFgXgXPeCcAPZsIlavWHrodG
+```
+Completed in a real browser at Stripe's hosted Checkout page with test card `4242 4242 4242 4242`.
+
+**2. `stripe listen` forwarded the real webhooks** (not simulated — Stripe's own servers, in response to the real Checkout completing):
+```
+Ready! Your webhook signing secret is whsec_580efdf3384782b864e19d16ed472caf0870b55d3c505e09841f8aa01661e4e3
+
+2026-09-30 19:25:54   --> checkout.session.completed [evt_1ULQKLLz2NZzXX8jrh7B4hRC]
+2026-09-30 19:25:54  <--  [200] POST http://localhost:8000/webhooks/stripe [evt_1ULQKLLz2NZzXX8jrh7B4hRC]
+2026-09-30 19:25:55   --> customer.subscription.updated [evt_1ULQKMLz2NZzXX8j5Pi1B7GS]
+2026-09-30 19:25:55  <--  [200] POST http://localhost:8000/webhooks/stripe [evt_1ULQKMLz2NZzXX8j5Pi1B7GS]
+```
+Both real Stripe events verified (real signature, not a locally-signed test payload this time) and processed with a real `200`.
+
+**3. `GET /v1/usage?tenant_id=tn_demo_free`, after the webhooks landed:**
+```
+tenant_id           : tn_demo_free
+plan                : pro
+subscription_status : active
+period              : @{start=2026-09-01T00:00:00+00:00; end=2026-10-01T00:00:00+00:00}
+api_calls           : @{used=0; limit=20000}
+ai_tokens           : @{used=0; limit=5000000}
+cost_micro_cents    : 0
+cost_usd            : $0.00
+```
+`plan: pro` and the limits (20,000 calls / 5,000,000 tokens) confirm the tenant was genuinely flipped from Free to Pro by the real webhook, not by any direct database write — nothing in this app's code sets `plan_id` outside `app/lib/webhooks.py`'s event handlers.
 
 ## Automated tests — one command, deterministic, no network
 
